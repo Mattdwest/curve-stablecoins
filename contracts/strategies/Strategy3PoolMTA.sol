@@ -27,6 +27,7 @@ contract Strategy3PoolMTA is BaseStrategy {
     address public unirouter;
     address public threePoolMTA;
     address public gauge;
+    //address public proxy;
     string public constant override name = "Strategy3PoolMTA";
 
     constructor(
@@ -36,7 +37,8 @@ contract Strategy3PoolMTA is BaseStrategy {
         address _crv,
         address _threePoolMTA,
         address _gauge,
-        address _unirouter
+        address _unirouter,
+        //address _proxy
     ) public BaseStrategy(_vault) {
         mta = _mta;
         threePool = _threePool;
@@ -44,6 +46,7 @@ contract Strategy3PoolMTA is BaseStrategy {
         threePoolMTA = _threePoolMTA;
         gauge = _gauge;
         unirouter = _unirouter;
+        //proxy = _proxy;
 
         IERC20(threePool).safeApprove(threePoolMTA, uint256(-1));
         IERC20(threePoolMTA).safeApprove(gauge, uint256(-1));
@@ -76,6 +79,11 @@ contract Strategy3PoolMTA is BaseStrategy {
         setReserve(balanceOfWant().sub(_debtOutstanding));
 
         // claim/sell MTA and curve
+        // claim MTA
+        IGauge(gauge).claim_rewards(address(this));
+        //claim crv
+        IGauge(gauge).mint(address(this));
+
 
 
         // Final profit is want generated in the swap if ethProfit > 0
@@ -158,6 +166,38 @@ contract Strategy3PoolMTA is BaseStrategy {
     // returns balance of threePool
     function balanceOfWant() public view returns (uint256) {
         return IERC20(want).balanceOf(address(this));
+    }
+
+    function swapCRVto3Pool() internal {
+        uint256 crvBalance = IERC20(crv).balanceOf(address(this));
+            if (crvBalance > 0) {
+                address[] memory path = new address[](3);
+                path[0] = crv;
+                path[1] = weth;
+                path[2] = dai;
+                path[3] = musd;
+
+                Uni(unirouter).swapExactTokensForTokens(crvBalance,uint256(0), path, address(this), now.add(1 days));
+
+                uint256 musdBalance = IERC20(musd).balanceOf(address(this));
+                ICurve(threePoolMTA).add_liquidity([musdBalance,0], 0);
+            }
+    }
+
+function swapMTAto3Pool() internal {
+        uint256 mtaBalance = IERC20(mta).balanceOf(address(this));
+            if (mtaBalance > 0) {
+                address[] memory path = new address[](3);
+                path[0] = mta;
+                path[1] = weth;
+                path[2] = dai;
+                path[3] = musd;
+
+                Uni(unirouter).swapExactTokensForTokens(mtaBalance,uint256(0), path, address(this), now.add(1 days));
+
+                uint256 musdBalance = IERC20(musd).balanceOf(address(this));
+                ICurve(threePoolMTA).add_liquidity([musdBalance,0], 0);
+            }
     }
 
 }
