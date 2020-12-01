@@ -40,11 +40,10 @@ contract StrategyUSDT3Pool is BaseStrategy {
     }
 
     function protectedTokens() internal override view returns (address[] memory) {
-        address[] memory protected = new address[](4);
-        protected[0] = usdt;
-        protected[1] = threePool;
-        protected[2] = y3Pool;
-        protected[3] = address(want); // want is usdt
+        address[] memory protected = new address[](2);
+        // usdt (aka want) is already protected by default
+        protected[0] = threePool;
+        protected[1] = y3Pool;
         return protected;
     }
 
@@ -59,11 +58,10 @@ contract StrategyUSDT3Pool is BaseStrategy {
            liquidatePosition(_debtOutstanding);
         }
 
-        // Update reserve with the available want so it's not considered profit
-        setReserve(balanceOfWant().sub(_debtOutstanding));
+        uint256 balanceOfWantBefore = balanceOfWant();
 
         // Final profit is want generated in the swap if ethProfit > 0
-        _profit = balanceOfWant().sub(getReserve());
+        _profit = balanceOfWant().sub(balanceOfWantBefore);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -71,9 +69,6 @@ contract StrategyUSDT3Pool is BaseStrategy {
         if (emergencyExit) {
           return;
        }
-
-        // Reset the reserve value before
-        setReserve(0);
 
        // Invest the rest of the want
        uint256 _wantAvailable = balanceOfWant().sub(_debtOutstanding);
@@ -85,8 +80,15 @@ contract StrategyUSDT3Pool is BaseStrategy {
     }
 
     // withdraws everything that is currently in the strategy, regardless of values.
-    // todo: check that usdt is #3 in pool
-    function exitPosition() internal override {
+    function exitPosition(uint256 _debtOutstanding)
+        internal
+        override
+        returns (
+          uint256 _profit,
+          uint256 _loss,
+          uint256 _debtPayment
+        )
+        {
         //uint256 y3PoolBalance = IERC20(y3Pool).balanceOf(address(this));
         Vault(y3Pool).withdrawAll();
         uint256 threePoolBalance = IERC20(threePool).balanceOf(address(this));
@@ -106,8 +108,7 @@ contract StrategyUSDT3Pool is BaseStrategy {
 
 
     // withdraw some usdt from the vaults
-    // TODO: verify that USDT is #3 in the onecoin function
-    function _withdrawSome(uint256 _amount) internal returns (string memory) {
+    function _withdrawSome(uint256 _amount) internal returns (uint256) {
         uint256 _3PoolAmount = (_amount).mul(1e18).div(ICurve(threePool).get_virtual_price());
         uint256 y3PoolAmount = (_3PoolAmount).mul(1e18).div(Vault(y3Pool).getPricePerFullShare());
         Vault(y3Pool).withdraw(y3PoolAmount);
